@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PurrGameTetris - Playable Ad</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background-color: #1a1a1a; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    </style>
+</head>
+<body>
+
+<div id="game-container"></div>
+
+<script>
+    const config = {
+        type: Phaser.AUTO,
+        width: 450,
+        height: 800,
+        parent: 'game-container',
+        physics: { default: 'arcade', arcade: { gravity: { y: 0 }, debug: false } },
+        scene: { preload: preload, create: create, update: update }
+    };
+
+    const game = new Phaser.Game(config);
+
+    // --- НАЛАШТУВАННЯ КООРДИНАТ ТА ТУТОРІАЛУ ---
+    const spawnX = 300, spawnY = 600;
+
+    const handStartX = 300, handStartY = 550, handEndX = 140, handEndY = 360;
+
+    const mouseSpawnX = 200, mouseSpawnY = 640, mouseTargetX = 240, mouseTargetY = 470;
+
+    const catTargetX = 270, catTargetY = 260, dropTolerance = 30;
+    // ------------------------------------------
+
+    function preload() {
+        this.load.atlas('world', 'assets/BackAndCactusForAdd.png', 'assets/BackAndCactusForAdd.json');
+        this.load.atlas('cat', 'assets/CatForAd.png', 'assets/CatForAd.json');
+        this.load.image('hand', 'assets/Hand.png');
+        this.load.image('button_play', 'assets/ButtonPlay.png');
+        this.load.image('game_icon', 'assets/Icon.png');
+
+        this.load.audio('bg_music', 'assets/background_loop.mp3');
+        this.load.audio('meow', 'assets/meow.mp3');
+        this.load.audio('purr', 'assets/purr.mp3');
+        this.load.audio('mouse_giggle', 'assets/mouse_giggle.mp3');
+        
+    }
+
+    let cat, box, mouse, tutorialGroup, hand;
+    let catOutline;
+    let isGameStarted = false;
+    let mouseOccupied = false;
+    let sfxMeow, sfxPurr, sfxGiggle;
+
+    function create() {
+        // 1. Фон та ФОНОВА МУЗИКА
+        const bgMusic = this.sound.add('bg_music', { volume: 0.4, loop: true });
+        
+        // Створюємо звукові ефекти
+        sfxMeow = this.sound.add('meow', { volume: 0.6 });
+        sfxPurr = this.sound.add('purr', { volume: 0.7 });
+        sfxGiggle = this.sound.add('mouse_giggle', { volume: 0.6 });
+
+        this.add.tileSprite(225, 400, 460, 800, 'world', 'BackAndCactusForAdd 4.ase');
+
+        // 2. Коробка
+        this.anims.create({
+            key: 'box_idle',
+            frames: this.anims.generateFrameNames('world', { prefix: 'BackAndCactusForAdd ', suffix: '.ase', start: 0, end: 3 }),
+            frameRate: 2, repeat: -1
+        });
+        box = this.add.sprite(225, 300, 'world').setScale(2.2);
+        box.play('box_idle');
+
+        // 3. Мишка
+        this.anims.create({
+            key: 'mouse_idle',
+            frames: [{ key: 'world', frame: 'BackAndCactusForAdd 5.ase' }, { key: 'world', frame: 'BackAndCactusForAdd 6.ase' }],
+            frameRate: 2, repeat: -1
+        });
+        mouse = this.add.sprite(mouseSpawnX, mouseSpawnY, 'world').setScale(2,2);
+        mouse.play('mouse_idle');
+        
+        this.tweens.add({
+            targets: mouse,
+            angle: { from: -3, to: 3 },
+            duration: 1000,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        // 4. Котик
+        this.anims.create({
+            key: 'cat_idle',
+            frames: [
+                { key: 'cat', frame: 'CatForAd 0.ase' },
+                { key: 'cat', frame: 'CatForAd 1.ase' },
+                { key: 'cat', frame: 'CatForAd 2.ase' },
+                { key: 'cat', frame: 'CatForAd 1.ase' }
+            ],
+            frameRate: 4, repeat: -1
+        });
+        this.anims.create({
+            key: 'cat_drag',
+            frames: this.anims.generateFrameNames('cat', { prefix: 'CatForAd ', suffix: '.ase', start: 3, end: 5 }),
+            frameRate: 2, repeat: -1
+        });
+        this.anims.create({
+            key: 'cat_land',
+            frames: this.anims.generateFrameNames('cat', { prefix: 'CatForAd ', suffix: '.ase', start: 6, end: 12 }),
+            frameRate: 4, repeat: 0
+        });
+
+        cat = this.physics.add.sprite(spawnX, spawnY, 'cat', 'CatForAd 0.ase').setScale(2,2);
+        cat.play('cat_idle').setInteractive({ draggable: true });
+
+        let catTiltTween = this.tweens.add({
+            targets: cat,
+            angle: { from: -3, to: 3 },
+            duration: 1200, // трохи повільніше, ніж у мишки, для природності
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+
+        cat.on('animationupdate', (animation, frame) => {
+            // В анімації cat_drag кадрів всього 3 (індекси 0, 1, 2). Третій кадр - це індекс 2.
+            if (animation.key === 'cat_drag' && frame.index === 2) {
+                if (!sfxMeow.isPlaying) sfxMeow.play();
+            }
+        });
+        // 5. ТУТОРІАЛ
+        tutorialGroup = this.add.group();
+        
+        let overlay = this.add.graphics();
+        overlay.fillStyle(0x000000, 0.6);
+        overlay.fillRect(0, 0, 450, 800);
+        tutorialGroup.add(overlay);
+
+        let tutorialText = this.add.text(225, 690, 'Put the Cat in\nthe Cozy Box', {
+            fontSize: '50px', fontWeight: 'bold', fill: '#fff200', align: 'center', stroke: '#000000', strokeThickness: 10, fontFamily: 'Arial' 
+        }).setOrigin(0.5);
+        tutorialGroup.add(tutorialText);
+
+        hand = this.add.image(handStartX, handStartY, 'hand').setScale(2);
+        tutorialGroup.add(hand);
+
+        // Анімація руки по ПАРАБОЛІ
+        this.tweens.addCounter({
+            from: 0, to: 1, duration: 1500, repeat: -1,
+            onUpdate: (tween) => {
+                const v = tween.getValue();
+                const x = handStartX + (handEndX - handStartX) * v;
+                const y = handStartY + (handEndY - handStartY) * v - Math.sin(v * Math.PI) * 50; // 100 - висота дуги
+                hand.setPosition(x, y);
+                hand.alpha = v < 0.1 ? v * 10 : (v > 0.9 ? (1 - v) * 10 : 1); // Пластична прозорість
+            }
+        });
+
+        // 6. ЛОГІКА ПЕРЕТЯГУВАННЯ
+        this.input.on('dragstart', () => {
+            if (!isGameStarted) {
+                isGameStarted = true;
+                tutorialGroup.clear(true, true); // Напис, фон і рука зникають відразу
+                if (!bgMusic.isPlaying) bgMusic.play();
+            }
+            cat.play('cat_drag');
+
+            if (!catOutline) {
+                catOutline = cat.postFX.addGlow(0xffffff, 4); // 0xffffff - білий, 4 - товщина
+            } else {
+                catOutline.setActive(true); // Якщо ефект уже був створений, просто вмикаємо його
+            }
+            if (catTiltTween) {
+                catTiltTween.pause();
+                cat.setAngle(0);
+            }
+        });
+
+        this.input.on('drag', (pointer, gameObject, dragX, dragY) => {
+            gameObject.x = dragX;
+            gameObject.y = dragY;
+
+            // Стрибок миші по ПАРАБОЛІ при наближенні
+            let dist = Phaser.Math.Distance.Between(gameObject.x, gameObject.y, box.x, box.y);
+            if (dist < 150 && !mouseOccupied) {
+                mouseOccupied = true;
+                sfxGiggle.play();
+                this.tweens.addCounter({
+                    from: 0, to: 1, duration: 600,
+                    onUpdate: (tween) => {
+                        const v = tween.getValue();
+                        const x = mouseSpawnX + (mouseTargetX - mouseSpawnX) * v;
+                        const y = mouseSpawnY + (mouseTargetY - mouseSpawnY) * v - Math.sin(v * Math.PI) * 80;
+                        mouse.setPosition(x, y);
+                    }
+                });
+            }
+        });
+
+        this.input.on('dragend', (pointer, gameObject) => {
+            let distance = Phaser.Math.Distance.Between(gameObject.x, gameObject.y, catTargetX, catTargetY);
+            console.log("X: " + Math.round(gameObject.x) + ", Y: " + Math.round(gameObject.y) + " | Distance: " + Math.round(distance));
+
+                if (catOutline) {
+                    catOutline.setActive(false);
+                }
+                if (distance < dropTolerance) {
+                    gameObject.setPosition(catTargetX, catTargetY);
+                    sfxPurr.play();
+                    gameObject.play('cat_land').disableInteractive();
+                
+                    gameObject.once('animationcomplete', () => { 
+                        gameObject.play('cat_idle'); 
+
+                        // 1. Створюємо фінальне затемнення
+                        let endOverlay = this.add.graphics();
+                        endOverlay.fillStyle(0x000000, 1); // Починаємо з прозорого
+                        endOverlay.fillRect(0, 0, 450, 800);
+                        endOverlay.setAlpha(0);
+                        endOverlay.setDepth(10); // Поверх усього
+
+                        // 2. Створюємо кнопку (поки що прозору)
+                        let playBtn = this.add.image(225, 520, 'button_play')
+                            .setScale(0) // Починаємо з нульового розміру
+                            .setInteractive({ useHandCursor: true })
+                            .setDepth(11);
+
+                        let gameIcon = this.add.image(225, 220, 'game_icon')
+                            .setScale(0)
+                            .setDepth(11);
+
+                        let endText = this.add.text(225, 630, 'Stop! Clear your head.', {
+                            fontSize: '34px',
+                            fontWeight: 'bold',
+                            fill: '#fff200', // Соковитий жовтий колір для заклику до дії
+                            align: 'center',
+                            stroke: '#000000', // Чорна обводка
+                            strokeThickness: 8,
+                            fontFamily: 'Arial' // Можна замінити на ваш ігровий шрифт
+                        }).setOrigin(0.5).setScale(0).setDepth(11);
+
+                        // 3. Анімація появи
+                        this.tweens.add({
+                            targets: endOverlay,
+                            alpha: 0.7, // Затемнюємо до 70%
+                            duration: 800
+                        });
+
+                        this.tweens.add({
+                            targets: playBtn,
+                            scale: 1.8, // Збільшуємо до нормального розміру (підберіть під себе)
+                            duration: 800,
+                            ease: 'Back.easeOut',
+                            onComplete: () => {
+                                // Пульсуюча анімація кнопки, щоб привернути увагу
+                                this.tweens.add({
+                                    targets: playBtn,
+                                    scale: 2,
+                                    duration: 800,
+                                    yoyo: true,
+                                    repeat: -1
+                                });
+                            }
+                        });
+
+                        this.tweens.add({
+                            targets: gameIcon,
+                            scale: 1.8, // масштаб підберіть під розмір вашої картинки
+                            duration: 800,
+                            ease: 'Back.easeOut',
+                            onComplete: () => {
+                                // Пульсація іконки (в такт із кнопкою)
+                                this.tweens.add({
+                                    targets: gameIcon,
+                                    scale: 1.95,
+                                    duration: 800,
+                                    yoyo: true,
+                                    repeat: -1
+                                });
+                            }
+                        });
+
+                        this.tweens.add({
+                            targets: endText,
+                            scale: 1, // Збільшується до нормального розміру з ефектом відскоку
+                            duration: 800,
+                            ease: 'Back.easeOut',
+                            onComplete: () => {
+                                // Пульсація тексту в такт із кнопкою та іконкою
+                                this.tweens.add({
+                                    targets: endText,
+                                    scale: 1.08,
+                                    duration: 800,
+                                    yoyo: true,
+                                    repeat: -1
+                                });
+                            }
+                        });
+
+
+                        // 4. Подія кліку по кнопці
+                        playBtn.on('pointerdown', () => {
+                            window.open('https://www.crazygames.com/game/purrgametetris?bypassCache=rc7mp', '_blank');
+                        });
+                    });
+                } else{
+                     // ПРОМАХ: Котик летить назад на спавн
+                    this.tweens.add({
+                        targets: gameObject,
+                        x: spawnX,
+                        y: spawnY,
+                        duration: 500, // швидкість польоту назад
+                        ease: 'Back.easeOut', // ефект легкого відскоку при приземленні
+                        onComplete: () => {
+                            gameObject.play('cat_idle');
+                            if (catTiltTween) catTiltTween.resume();
+                        }
+                    });
+                }    
+            });
+    }
+
+    function update() {}
+</script>
+
+</body>
+</html>
