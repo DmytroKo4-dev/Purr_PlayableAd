@@ -59,7 +59,7 @@
  "meta": {
   "app": "https://github.com/LibreSprite/LibreSprite/",
   "version": "1.2-973d0e3d-SDL",
-  "image": "D:\\Programs\\LibreSparite\\ProljectsSprites\\PurrGameTetris\\BackAndCactusForAdd.png",
+  "image": "D:\\Programs\\Unity\\Test\\PurrGameTetris\\PlayableAd\\PurrPlayable\\Purr_PlayableAd\\assets\\BackAndCactusForAdd.png",
   "format": "RGBA8888",
   "size": { "w": 1344, "h": 192 },
   "scale": "1",

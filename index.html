@@ -57,6 +57,9 @@
     let sfxMeow, sfxPurr, sfxGiggle;
 
     function create() {
+        this.load.on('loaderror', function (file) {
+            console.error('Помилка завантаження файлу: ' + file.src);
+        });
         // 1. Фон та ФОНОВА МУЗИКА
         const bgMusic = this.sound.add('bg_music', { volume: 0.4, loop: true });
         
@@ -65,7 +68,9 @@
         sfxPurr = this.sound.add('purr', { volume: 0.7 });
         sfxGiggle = this.sound.add('mouse_giggle', { volume: 0.6 });
 
-        this.add.tileSprite(225, 400, 460, 800, 'world', 'BackAndCactusForAdd 4.ase');
+        let bg = this.add.sprite(this.cameras.main.centerX, this.cameras.main.centerY, 'world', 'BackAndCactusForAdd 4.ase');
+        bg.setDisplaySize(this.cameras.main.width, this.cameras.main.height);
+        bg.postFX.addVignette(0.5, 0.4, 0.8, 0.7);
 
         // 2. Коробка
         this.anims.create({
